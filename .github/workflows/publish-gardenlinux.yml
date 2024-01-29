@@ -1,0 +1,64 @@
+name: Publish GardenLinux Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Install yq (YAML Processor)
+        run: sudo snap install yq
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Read Config File and Extract OS Version
+        id: read-config
+        run: |
+          GARDENLINUX_ARTIFACT_URL=$(yq e '.gardenlinux_artifact_url' .github/os_image_artifacts.yml)
+          echo "GARDENLINUX_ARTIFACT_URL=$GARDENLINUX_ARTIFACT_URL" >> $GITHUB_ENV
+          OS_VERSION=$(echo $GARDENLINUX_ARTIFACT_URL | cut -d '/' -f 8)
+          echo "OS_VERSION=$OS_VERSION" >> $GITHUB_ENV
+          ARTIFACT_FOLDER=$(basename $GARDENLINUX_ARTIFACT_URL | sed 's/.tar.xz//')
+          echo "ARTIFACT_FOLDER=$ARTIFACT_FOLDER" >> $GITHUB_ENV
+
+      - name: Download and Extract Gardenlinux Artifact
+        run: |
+          curl -L ${{ env.GARDENLINUX_ARTIFACT_URL }} -o gardenlinux.tar.xz
+          tar -xf gardenlinux.tar.xz
+
+      - name: Create Dummy Kernel and Initrd Files
+        run: |
+          dd if=/dev/zero of=dummy_kernel bs=1M count=1
+          dd if=/dev/zero of=dummy_initrd bs=1M count=1
+
+      - name: Create Config JSON
+        run: |
+          echo "{\"commandLine\": \"\", \"os-release\": \"$OS_VERSION\"}" > config.json
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Image with ORAS (Version Tag)
+        run: |
+          RAW_FILE=$(ls ${{ env.ARTIFACT_FOLDER }}/*.raw)
+          oras push ghcr.io/ironcore-dev/os-images/gardenlinux:$OS_VERSION \
+          $RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
+          dummy_kernel:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
+          dummy_initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
+
+      - name: Push Image with ORAS (Latest Tag)
+        run: |
+          oras tag ghcr.io/ironcore-dev/os-images/gardenlinux:$OS_VERSION latest
