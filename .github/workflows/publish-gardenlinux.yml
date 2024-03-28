@@ -19,25 +19,32 @@ jobs:
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
 
-      - name: Read Config File and Extract OS Version
+      - name: Read Config Files and Extract OS Version
         id: read-config
         run: |
-          GARDENLINUX_ARTIFACT_URL=$(yq e '.gardenlinux_artifact_url' .github/os_image_artifacts.yml)
-          echo "GARDENLINUX_ARTIFACT_URL=$GARDENLINUX_ARTIFACT_URL" >> $GITHUB_ENV
-          OS_VERSION=$(echo $GARDENLINUX_ARTIFACT_URL | cut -d '/' -f 8)
+          GARDENLINUX_KVM_ARTIFACT_URL=$(yq e '.gardenlinux_kvm_artifact_url' .github/os_image_artifacts.yml)
+          GARDENLINUX_METAL_ARTIFACT_URL=$(yq e '.gardenlinux_metal_artifact_url' .github/os_image_artifacts.yml)
+          echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
+          echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
+          OS_VERSION=$(echo $GARDENLINUX_KVM_ARTIFACT_URL | cut -d '/' -f 8)
           echo "OS_VERSION=$OS_VERSION" >> $GITHUB_ENV
-          ARTIFACT_FOLDER=$(basename $GARDENLINUX_ARTIFACT_URL | sed 's/.tar.xz//')
+          ARTIFACT_FOLDER=$(basename $GARDENLINUX_KVM_ARTIFACT_URL | sed 's/.tar.xz//')
           echo "ARTIFACT_FOLDER=$ARTIFACT_FOLDER" >> $GITHUB_ENV
 
-      - name: Download and Extract Gardenlinux Artifact
+      - name: Download and Extract Gardenlinux KVM Artifact
         run: |
-          curl -L ${{ env.GARDENLINUX_ARTIFACT_URL }} -o gardenlinux.tar.xz
+          curl -L ${{ env.GARDENLINUX_KVM_ARTIFACT_URL }} -o gardenlinux.tar.xz
           tar -xf gardenlinux.tar.xz
 
-      - name: Create Dummy Kernel and Initrd Files
+      - name: Download and Extract Gardenlinux Metal Artifact
         run: |
-          dd if=/dev/zero of=dummy_kernel bs=1M count=1
-          dd if=/dev/zero of=dummy_initrd bs=1M count=1
+          # Download the outer tarball
+          curl -L ${{ env.GARDENLINUX_METAL_ARTIFACT_URL }} -o gardenlinux-metal.tar.xz
+          tar -xf gardenlinux-metal.tar.xz
+
+          # Extract the nested tarball to get the initrd, vmlinuz, and root.squashfs files
+          NESTED_TARBALL=$(find . -name "*pxe.tar.gz")
+          tar -xzf $NESTED_TARBALL
 
       - name: Create Config JSON
         run: |
@@ -52,11 +59,15 @@ jobs:
 
       - name: Push Image with ORAS (Version Tag)
         run: |
-          RAW_FILE=$(ls ${{ env.ARTIFACT_FOLDER }}/*.raw)
+          KVM_RAW_FILE=$(ls ${{ env.ARTIFACT_FOLDER }}/*.raw)
+          METAL_SQUASHFS_FILE=root.squashfs
+          METAL_INITRD_FILE=initrd
+          METAL_VMLINUZ_FILE=vmlinuz
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux:$OS_VERSION \
-          $RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
-          dummy_kernel:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
-          dummy_initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
+          $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.metal.squashfs.v1alpha1.squashfs \
+          $METAL_INITRD_FILE:application/vnd.ironcore.image.metal.initramfs.v1alpha1.initramfs \
+          $METAL_VMLINUZ_FILE:application/vnd.ironcore.image.metal.vmlinuz.v1alpha1.vmlinuz \
           --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
 
       - name: Push Image with ORAS (Latest Tag)

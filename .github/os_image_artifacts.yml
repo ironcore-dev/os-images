@@ -1,2 +1,3 @@
-gardenlinux_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1312.2/kvm-gardener_prod-amd64-1312.2-77c8471d.tar.xz
+gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.1/kvm-gardener_prod-amd64-1443.1-36c740a4.tar.xz
+gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.1/metal-gardener_prod_pxe-amd64-1443.1-36c740a4.tar.xz
 # You can add more OS specific URLs here later.
