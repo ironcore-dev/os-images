@@ -65,9 +65,9 @@ jobs:
           METAL_VMLINUZ_FILE=vmlinuz
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux:$OS_VERSION \
           $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
-          $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.metal.squashfs.v1alpha1.squashfs \
-          $METAL_INITRD_FILE:application/vnd.ironcore.image.metal.initramfs.v1alpha1.initramfs \
-          $METAL_VMLINUZ_FILE:application/vnd.ironcore.image.metal.vmlinuz.v1alpha1.vmlinuz \
+          $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
+          $METAL_INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          $METAL_VMLINUZ_FILE:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
           --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
 
       - name: Push Image with ORAS (Latest Tag)
