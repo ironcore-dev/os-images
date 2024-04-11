@@ -1,3 +1,3 @@
-gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.1/kvm-gardener_prod-amd64-1443.1-36c740a4.tar.xz
-gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.1/metal-gardener_prod_pxe-amd64-1443.1-36c740a4.tar.xz
+gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.3/kvm-gardener_prod-amd64-1443.3-c261f887.tar.xz
+gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.3/metal-gardener_prod_pxe-amd64-1443.3-c261f887.tar.xz
 # You can add more OS specific URLs here later.
