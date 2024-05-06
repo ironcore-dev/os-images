@@ -43,9 +43,9 @@ jobs:
 
       - name: Create dummy files using dd
         run: |
-          dd if=/dev/zero of=./build/METAL_SQUASHFS_FILE.squashfs bs=1M count=1
-          dd if=/dev/zero of=./build/METAL_INITRD_FILE.initrd bs=1M count=1
-          dd if=/dev/zero of=./build/METAL_VMLINUZ_FILE.vmlinuz bs=1M count=1
+          dd if=/dev/zero of=.build/METAL_SQUASHFS_FILE.squashfs bs=1M count=1
+          dd if=/dev/zero of=.build/METAL_INITRD_FILE.initrd bs=1M count=1
+          dd if=/dev/zero of=.build/METAL_VMLINUZ_FILE.vmlinuz bs=1M count=1
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
@@ -59,7 +59,7 @@ jobs:
           file=$(ls ./build/*.raw | head -n 1)
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux-dev:latest \
           $file:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
-          ./build/METAL_SQUASHFS_FILE.squashfs:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
-          ./build/METAL_INITRD_FILE.initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
-          ./build/METAL_VMLINUZ_FILE.vmlinuz:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
+          .build/METAL_SQUASHFS_FILE.squashfs:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
+          .build/METAL_INITRD_FILE.initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          .build/METAL_VMLINUZ_FILE.vmlinuz:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
           --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
