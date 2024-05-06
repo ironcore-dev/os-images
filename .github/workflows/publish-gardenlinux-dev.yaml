@@ -56,7 +56,7 @@ jobs:
 
       - name: Push Artifact using ORAS
         run: |
-          file=$(ls ./build/*.raw | head -n 1)
+          file=$(ls .build/*.raw | head -n 1)
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux-dev:latest \
           $file:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
           .build/METAL_SQUASHFS_FILE.squashfs:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
