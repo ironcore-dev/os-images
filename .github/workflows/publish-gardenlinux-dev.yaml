@@ -12,6 +12,9 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get -qq -y install podman
+          curl -Lo ./crun https://github.com/containers/crun/releases/download/1.14.3/crun-1.14.3-linux-amd64
+          chmod +x ./crun
+          sudo mv ./crun /usr/bin/crun
 
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
