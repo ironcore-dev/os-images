@@ -1,0 +1,62 @@
+name: Build Gardenlinux Dev
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Podman
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get -qq -y install podman
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Clone gardenlinux repository
+        uses: actions/checkout@v2
+        with:
+          repository: gardenlinux/gardenlinux
+          fetch-depth: 0
+
+      - name: Checkout latest tag
+        run: |
+          git fetch --all --tags
+          latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          git checkout $latestTag
+          echo "{\"commandLine\": \"\", \"os-release\": \"$latestTag\"}" > config.json
+
+      - name: Overwrite features/ssh/info.yaml
+        run: |
+          echo 'description: "OpenSSH server"' > features/ssh/info.yaml
+          echo 'type: element' >> features/ssh/info.yaml
+
+      - name: Build with Podman
+        run: |
+          ./build kvm
+
+      - name: Create dummy files using dd
+        run: |
+          dd if=/dev/zero of=./build/METAL_SQUASHFS_FILE.squashfs bs=1M count=1
+          dd if=/dev/zero of=./build/METAL_INITRD_FILE.initrd bs=1M count=1
+          dd if=/dev/zero of=./build/METAL_VMLINUZ_FILE.vmlinuz bs=1M count=1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Artifact using ORAS
+        run: |
+          file=$(ls ./build/*.raw | head -n 1)
+          oras push ghcr.io/ironcore-dev/os-images/gardenlinux-dev:latest \
+          $file:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
+          ./build/METAL_SQUASHFS_FILE.squashfs:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
+          ./build/METAL_INITRD_FILE.initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          ./build/METAL_VMLINUZ_FILE.vmlinuz:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
+          --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
