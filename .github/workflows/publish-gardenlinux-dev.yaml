@@ -46,7 +46,6 @@ jobs:
 
       - name: Create dummy files using dd in the current directory
         run: |
-          dd if=/dev/zero of=squashfs bs=1M count=1
           dd if=/dev/zero of=initrd bs=2M count=1
           dd if=/dev/zero of=vmlinuz bs=3M count=1
 
@@ -64,13 +63,11 @@ jobs:
       - name: Push Artifact using ORAS
         run: |
           KVM_RAW_FILE=$(ls .build/*.raw | head -n 1)
-          SQUASHFS_FILE=squashfs
           INITRD_FILE=initrd 
           VMLINUZ_FILE=vmlinuz 
           echo "Pushing files to ORAS..."
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux-dev:latest \
           $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
-          $SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
           $INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
           $VMLINUZ_FILE:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
           --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
