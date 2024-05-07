@@ -60,7 +60,7 @@ jobs:
 
       - name: Push Artifact using ORAS
         run: |
-          file=$(ls ./*.raw | head -n 1)
+          file=$(ls .build/*.raw | head -n 1)
           echo "Pushing files to ORAS..."
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux-dev:latest \
             $file:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
