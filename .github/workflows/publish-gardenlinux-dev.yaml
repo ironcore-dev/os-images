@@ -60,7 +60,7 @@ jobs:
 
       - name: Push Artifact using ORAS
         run: |
-          $KVM_RAW_FILE=$(ls .build/*.raw | head -n 1)
+          KVM_RAW_FILE=$(ls .build/*.raw | head -n 1)
           METAL_SQUASHFS_FILE=squashfs
           METAL_INITRD_FILE=initrd 
           METAL_VMLINUZ_FILE=vmlinuz 
