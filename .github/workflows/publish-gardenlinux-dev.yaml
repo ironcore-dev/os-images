@@ -1,6 +1,9 @@
 name: Publish GardenLinux Dev Image
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -43,9 +46,9 @@ jobs:
 
       - name: Create dummy files using dd in the current directory
         run: |
-          dd if=/dev/zero of=squashfs bs=1M count=1
-          dd if=/dev/zero of=initrd bs=1M count=1
-          dd if=/dev/zero of=vmlinuz bs=1M count=1
+          dd if=/dev/zero of=squashfs bs=5M count=1
+          dd if=/dev/zero of=initrd bs=5M count=1
+          dd if=/dev/zero of=vmlinuz bs=5M count=1
 
       - name: List files in the current directory
         run: |
@@ -61,13 +64,13 @@ jobs:
       - name: Push Artifact using ORAS
         run: |
           KVM_RAW_FILE=$(ls .build/*.raw | head -n 1)
-          METAL_SQUASHFS_FILE=squashfs
-          METAL_INITRD_FILE=initrd 
-          METAL_VMLINUZ_FILE=vmlinuz 
+          SQUASHFS_FILE=squashfs
+          INITRD_FILE=initrd 
+          VMLINUZ_FILE=vmlinuz 
           echo "Pushing files to ORAS..."
           oras push ghcr.io/ironcore-dev/os-images/gardenlinux-dev:latest \
           $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
-          $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
-          $METAL_INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
-          $METAL_VMLINUZ_FILE:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
+          $SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
+          $INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          $VMLINUZ_FILE:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
           --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
