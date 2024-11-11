@@ -13,12 +13,16 @@ The GitHub Actions workflow triggers on pushes to the `main` branch and performs
 - **Prepare and Push Images with ORAS**: Pushes the prepared OS images to `ghcr.io`, tagging each with its specific version and also as `latest`.
 
 ## Configuration
-The configuration for OS artifacts is managed through the `os_image_artifacts.yml` file located in the `.github` directory.
+The configuration for OS artifacts is managed through the `os_image_artifacts.yml` file located in the `.github` directory. Currently only `amd64` and `arm64` platforms are supported.
 
 ### Example Configuration
 ```yaml
-gardenlinux_artifact_url: <URL_TO_GARDENLINUX_ARTIFACT>
-# Additional OS configurations can be added here.
+amd64:
+  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/kvm-gardener_prod-amd64-1592.2-76203a30.tar.xz
+  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/metal-gardener_prod_pxe-amd64-1592.2-76203a30.tar.xz
+arm64:
+  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/kvm-gardener_prod-arm64-1592.2-76203a30.tar.xz
+  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/metal-gardener_prod_pxe-arm64-1592.2-76203a30.tar.xz
 ```
 
 ## Contributing
