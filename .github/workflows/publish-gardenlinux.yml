@@ -9,6 +9,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        arch: [ "arm64", "amd64" ]
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
@@ -22,8 +26,8 @@ jobs:
       - name: Read Config Files and Extract OS Version
         id: read-config
         run: |
-          GARDENLINUX_KVM_ARTIFACT_URL=$(yq e '.gardenlinux_kvm_artifact_url' .github/os_image_artifacts.yml)
-          GARDENLINUX_METAL_ARTIFACT_URL=$(yq e '.gardenlinux_metal_artifact_url' .github/os_image_artifacts.yml)
+          GARDENLINUX_KVM_ARTIFACT_URL=$(yq e ${{ matrix.arch }}.gardenlinux_kvm_artifact_url .github/os_image_artifacts.yml)
+          GARDENLINUX_METAL_ARTIFACT_URL=$(yq e ${{ matix.arch }}.gardenlinux_metal_artifact_url .github/os_image_artifacts.yml)
           echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
           echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
           OS_VERSION=$(echo $GARDENLINUX_KVM_ARTIFACT_URL | cut -d '/' -f 8)
@@ -48,7 +52,7 @@ jobs:
 
       - name: Create Config JSON
         run: |
-          echo "{\"commandLine\": \"\", \"os-release\": \"$OS_VERSION\"}" > config.json
+          echo "{\"commandLine\": \"\", \"os-release\": \"$OS_VERSION\"}, \"arch\": \"${{ matrix.arch }}\"" > config.json
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
@@ -63,7 +67,7 @@ jobs:
           METAL_SQUASHFS_FILE=root.squashfs
           METAL_INITRD_FILE=initrd
           METAL_VMLINUZ_FILE=vmlinuz
-          oras push ghcr.io/ironcore-dev/os-images/gardenlinux:$OS_VERSION \
+          oras push ghcr.io/ironcore-dev/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION \
           $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
           $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
           $METAL_INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
@@ -72,4 +76,4 @@ jobs:
 
       - name: Push Image with ORAS (Latest Tag)
         run: |
-          oras tag ghcr.io/ironcore-dev/os-images/gardenlinux:$OS_VERSION latest
+          oras tag ghcr.io/ironcore-dev/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION latest
