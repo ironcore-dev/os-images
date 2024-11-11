@@ -26,8 +26,8 @@ jobs:
       - name: Read Config Files and Extract OS Version
         id: read-config
         run: |
-          GARDENLINUX_KVM_ARTIFACT_URL=$(yq e ${{ matrix.arch }}.gardenlinux_kvm_artifact_url .github/os_image_artifacts.yml)
-          GARDENLINUX_METAL_ARTIFACT_URL=$(yq e ${{ matix.arch }}.gardenlinux_metal_artifact_url .github/os_image_artifacts.yml)
+          GARDENLINUX_KVM_ARTIFACT_URL=$(yq e .${{ matrix.arch }}.gardenlinux_kvm_artifact_url .github/os_image_artifacts.yml)
+          GARDENLINUX_METAL_ARTIFACT_URL=$(yq e .${{ matrix.arch }}.gardenlinux_metal_artifact_url .github/os_image_artifacts.yml)
           echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
           echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
           OS_VERSION=$(echo $GARDENLINUX_KVM_ARTIFACT_URL | cut -d '/' -f 8)
