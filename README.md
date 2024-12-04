@@ -18,11 +18,11 @@ The configuration for OS artifacts is managed through the `os_image_artifacts.ym
 ### Example Configuration
 ```yaml
 amd64:
-  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/kvm-gardener_prod-amd64-1592.2-76203a30.tar.xz
-  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/metal-gardener_prod_pxe-amd64-1592.2-76203a30.tar.xz
+  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/kvm-gardener_prod-amd64-1592.3-76203a30.tar.xz
+  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/metal-gardener_prod_pxe-amd64-1592.3-76203a30.tar.xz
 arm64:
-  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/kvm-gardener_prod-arm64-1592.2-76203a30.tar.xz
-  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.2/metal-gardener_prod_pxe-arm64-1592.2-76203a30.tar.xz
+  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/kvm-gardener_prod-arm64-1592.3-76203a30.tar.xz
+  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/metal-gardener_prod_pxe-arm64-1592.3-76203a30.tar.xz
 ```
 
 ## Contributing
