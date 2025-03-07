@@ -52,8 +52,12 @@ jobs:
 
       - name: Create Config JSON
         run: |
-          echo "{\"commandLine\": \"\", \"os-release\": \"$OS_VERSION\"}, \"arch\": \"${{ matrix.arch }}\"" > config.json
-
+          if [ "${{ matrix.arch }}" == "arm64" ]; then
+            echo "{\"commandLine\": \"gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyAMA0,115200 earlyprintk=ttyAMA0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu\", \"os-release\": \"$OS_VERSION\", \"arch\": \"${{ matrix.arch }}\"}" > config.json
+          fi
+          if [ "${{ matrix.arch }}" == "amd64" ]; then
+            echo "{\"commandLine\": \"gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu\", \"os-release\": \"$OS_VERSION\", \"arch\": \"${{ matrix.arch }}\"}" > config.json
+          fi
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v1
         with:
