@@ -1,0 +1,119 @@
+name: Publish GardenLinux New OCI Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Specify the GardenLinux version to process (e.g., 1877.0)"
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    env:
+      VERSION: ${{ github.event.inputs.version }}
+      GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y jq curl git make
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Fetch and Process Metal PXE Layers
+        id: fetch-and-process
+        run: |
+          set -euo pipefail
+
+          echo "Authenticating ORAS with GitHub Container Registry..."
+          echo "$GITHUB_TOKEN" | oras login ghcr.io -u github --password-stdin
+
+          IMAGE_REF="ghcr.io/gardenlinux/gardenlinux:$VERSION"
+          INDEX_FILE="index-manifest.json"
+          PXE_LAYERS_FILE="metal-pxe-layers.json"
+
+          echo "Fetching index manifest from: $IMAGE_REF"
+          INDEX_RAW=$(oras manifest fetch "$IMAGE_REF") || { echo "Failed to fetch index manifest"; exit 1; }
+
+          echo "$INDEX_RAW" | jq . > "$INDEX_FILE" || { echo "Invalid JSON from index"; exit 1; }
+
+          echo "🔍 Filtering PXE variant layers..."
+          jq -c '.manifests[] | select(.annotations.cname? and (.annotations.cname | startswith("metal_pxe")))' "$INDEX_FILE" > "$PXE_LAYERS_FILE"
+
+          mkdir -p binaries/amd64 binaries/arm64
+
+          jq -c '.' "$PXE_LAYERS_FILE" | while read -r layer; do
+            ARCH=$(echo "$layer" | jq -r '.platform.architecture // empty')
+            DIGEST=$(echo "$layer" | jq -r '.digest // empty')
+
+            if [[ -z "$ARCH" || -z "$DIGEST" ]]; then
+              echo "Skipping layer due to missing architecture or digest"
+              continue
+            fi
+
+            echo "Processing architecture: $ARCH | digest: $DIGEST"
+
+            MANIFEST_RAW=$(oras manifest fetch "ghcr.io/gardenlinux/gardenlinux@$DIGEST") || {
+              echo "Failed to fetch manifest for $DIGEST"; continue;
+            }
+
+            echo "$MANIFEST_RAW" | jq . > "manifest-$ARCH.json" || {
+              echo "Invalid manifest JSON for $ARCH"; continue;
+            }
+
+            for BINARY in initrd vmlinuz root.squashfs; do
+              echo "➡Fetching $BINARY for $ARCH..."
+
+              BINARY_DIGEST=$(echo "$MANIFEST_RAW" | jq -r --arg bin "$BINARY" '.layers[] | select(.annotations."org.opencontainers.image.title" == $bin).digest // empty')
+
+              if [[ -z "$BINARY_DIGEST" ]]; then
+                echo "No digest found for $BINARY in $ARCH"
+                continue
+              fi
+
+              oras blob fetch ghcr.io/gardenlinux/gardenlinux@$BINARY_DIGEST -o "binaries/$ARCH/$BINARY" || {
+                echo "Failed to fetch $BINARY with oras for $ARCH"
+                continue
+              }
+
+              echo "Downloaded $BINARY for $ARCH"
+            done
+          done
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Authenticate with GitHub
+        run: |
+          echo "Authenticating with GitHub..."
+          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Clone Ironcore Image Repository
+        run: |
+          git clone https://x-access-token:${{ secrets.GHCR_TOKEN }}@github.com/ironcore-dev/ironcore-image.git
+          cd ironcore-image
+          make build
+
+      - name: Build New OCI Image
+        run: |
+          cd ironcore-image
+          ./bin/ironcore-image build \
+            --tag ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION \
+            --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz \
+            --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz
+
+      - name: Push New OCI Image
+        run: |
+          cd ironcore-image
+          ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION --push-sub-manifest
