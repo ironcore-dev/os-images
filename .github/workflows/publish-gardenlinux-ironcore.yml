@@ -116,4 +116,4 @@ jobs:
       - name: Push New OCI Image
         run: |
           cd ironcore-image
-          ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION --push-sub-manifest
+          ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION --push-sub-manifests
