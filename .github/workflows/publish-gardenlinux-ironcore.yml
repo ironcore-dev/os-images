@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Specify the GardenLinux version to process (e.g., 1877.0)"
+        description: "Specify the GardenLinux version (e.g., 1877.0)"
         required: true
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GHCR_TOKEN }}
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v2
 
       - name: Install Dependencies and Build ukify + stub
@@ -32,14 +32,10 @@ jobs:
             libefivar-dev gnu-efi
           
           sudo pip3 install pefile
-          
           git clone --depth=1 --branch v256 https://github.com/systemd/systemd.git
           cd systemd
-          
           meson setup build
-          
           ninja -C build
-          
           sudo cp build/ukify /usr/local/bin/ukify
           sudo mkdir -p /usr/lib/systemd/boot/efi
           sudo cp build/src/boot/efi/linuxx64.efi.stub /usr/lib/systemd/boot/efi/
@@ -47,99 +43,95 @@ jobs:
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
 
-      - name: Authenticate with GitHub Container Registry
-        run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u github --password-stdin
+      - name: Authenticate with GHCR
+        run: |
+          echo "$GITHUB_TOKEN" | oras login ghcr.io -u github --password-stdin
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u ${GITHUB_ACTOR} --password-stdin
 
-      - name: Fetch and Process Metal PXE Layers
-        id: fetch-and-process
+      - name: Clone Ironcore Image Repo
+        run: |
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/ironcore-dev/ironcore-image.git
+
+      - name: Build and Push OCI Images (Vanilla/Gardener/CAPI)
         run: |
           set -euo pipefail
-
-          IMAGE_REF="ghcr.io/gardenlinux/gardenlinux:$VERSION"
-          INDEX_FILE="index-manifest.json"
-          PXE_LAYERS_FILE="metal-pxe-layers.json"
-
-          INDEX_RAW=$(oras manifest fetch "$IMAGE_REF")
-          echo "$INDEX_RAW" | jq . > "$INDEX_FILE"
-
-          jq -c '.manifests[] | select(.annotations.cname? and (.annotations.cname | startswith("metal_pxe")))' "$INDEX_FILE" > "$PXE_LAYERS_FILE"
-
-          mkdir -p binaries/amd64 binaries/arm64
-
-          jq -c '.' "$PXE_LAYERS_FILE" | while read -r layer; do
-            ARCH=$(echo "$layer" | jq -r '.platform.architecture')
-            DIGEST=$(echo "$layer" | jq -r '.digest')
-
-            MANIFEST_RAW=$(oras manifest fetch "ghcr.io/gardenlinux/gardenlinux@$DIGEST")
-
-            echo "$MANIFEST_RAW" | jq . > "manifest-$ARCH.json"
-
-            for BINARY in initrd vmlinuz root.squashfs; do
-              DIGEST_BIN=$(echo "$MANIFEST_RAW" | jq -r --arg bin "$BINARY" '.layers[] | select(.annotations."org.opencontainers.image.title" == $bin).digest')
-              oras blob fetch ghcr.io/gardenlinux/gardenlinux@$DIGEST_BIN -o "binaries/$ARCH/$BINARY"
-            done
-          done
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GHCR_TOKEN }}
-
-      - name: Authenticate with GitHub
-        run: |
-          git config --global url."https://x-access-token:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-
-      - name: Clone Ironcore Image Repository
-        run: |
-          git clone https://x-access-token:${{ secrets.GHCR_TOKEN }}@github.com/ironcore-dev/ironcore-image.git
-
-      - name: Build New OCI Image (without UKI)
-        run: |
           cd ironcore-image
           make build
-          ./bin/ironcore-image build \
-            --tag ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION \
-            --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz \
-            --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz
 
-      - name: Build UKI Images
-        run: |
-          cd ironcore-image
-          for ARCH in amd64 arm64; do
-            INDEX_REF="ghcr.io/ironcore-dev/os-images/gardenlinux:${VERSION}"
-          
-            echo "🔍 Getting digest for $ARCH from index $INDEX_REF"
-            DIGEST=$(./bin/ironcore-image inspect "$INDEX_REF" \
-              | jq -r ".manifests[] | select(.platform.architecture == \"$ARCH\") | .digest")
-          
-            if [[ -z "$DIGEST" ]]; then
-              echo "Failed to find manifest digest for $ARCH"
-              exit 1
-            fi
-          
-            echo "🔍 Inspecting arch-specific manifest: $DIGEST"
-            SQUASHFS_DIGEST=$(./bin/ironcore-image inspect ghcr.io/ironcore-dev/os-images/gardenlinux:${VERSION}-${ARCH}  \
-              | jq -r '.manifest.layers[] | select(.mediaType == "application/vnd.ironcore.image.squashfs").digest')
-          
-            CMDLINE="initrd=initrd gl.ovl=/:tmpfs gl.live=1 ip=any console=ttyS0,115200 console=tty0 earlyprintk=ttyS0,115200 consoleblank=0 ignition.firstboot=1 ignition.config.url=http://boot-operator-service.boot-operator-system.svc.cluster.local:8083/ignition ignition.config.url.append.uuid=true ignition.platform.id=metal gl.url=http://boot-operator-service.boot-operator-system.svc.cluster.local:8083/image?imageName=ghcr.io/ironcore-dev/os-images/gardenlinux&version=${VERSION}&layerDigest=${SQUASHFS_DIGEST}"
-          
-            echo "Building UKI for $ARCH"
-            ukify build \
-              --linux ../binaries/$ARCH/vmlinuz \
-              --initrd ../binaries/$ARCH/initrd \
-              --stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
-              --cmdline "$CMDLINE" \
-              --output ../binaries/$ARCH/uki.img
+          for VARIANT in vanilla gardener capi; do
+            echo "Starting build for variant: $VARIANT"
+
+            case "$VARIANT" in
+              vanilla)
+                IMAGE_TAG="$VERSION"
+                CNAME_PREFIX="metal_pxe"
+                ;;
+              gardener)
+                IMAGE_TAG="${VERSION}-gardener"
+                CNAME_PREFIX="metal-gardener_pxe"
+                ;;
+              capi)
+                IMAGE_TAG="${VERSION}-capi"
+                CNAME_PREFIX="metal-capi"
+                ;;
+            esac
+
+            mkdir -p ../binaries/amd64 ../binaries/arm64
+
+            for ARCH in amd64 arm64; do
+              echo "Fetching layer for $VARIANT $ARCH"
+
+              INDEX_JSON=$(oras manifest fetch ghcr.io/gardenlinux/gardenlinux:$VERSION)
+              echo "$INDEX_JSON" | jq . > index-${ARCH}.json
+
+              DIGEST=$(jq -r --arg arch "$ARCH" --arg prefix "$CNAME_PREFIX" \
+              '.manifests[] | select(.platform.architecture == $arch and ((.annotations.cname? // "") | tostring | startswith($prefix))) | .digest' index-${ARCH}.json)
+
+              echo "Found digest: $DIGEST"
+              oras manifest fetch ghcr.io/gardenlinux/gardenlinux@$DIGEST > manifest-${ARCH}.json
+
+              for BIN in initrd vmlinuz root.squashfs; do
+                DIGEST_BIN=$(jq -r --arg bin "$BIN" '.layers[] | select(.annotations."org.opencontainers.image.title" == $bin).digest' manifest-${ARCH}.json)
+                oras blob fetch ghcr.io/gardenlinux/gardenlinux@$DIGEST_BIN -o ../binaries/$ARCH/$BIN
+              done
+            done
+
+            echo "First build (without UKI)"
+            ./bin/ironcore-image build \
+              --tag ghcr.io/ironcore-dev/os-images/gardenlinux:$IMAGE_TAG \
+              --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz \
+              --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz
+
+            echo "Pushing base image (without UKI)"
+            ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$IMAGE_TAG --push-sub-manifests
+
+            echo "Inspecting squashfs digest for cmdline"
+            for ARCH in amd64 arm64; do
+              REF_TAG="${VERSION}-${ARCH}"
+              [[ "$VARIANT" != "vanilla" ]] && REF_TAG="${VERSION}-${VARIANT}-${ARCH}"
+
+              DIGEST=$(./bin/ironcore-image inspect ghcr.io/ironcore-dev/os-images/gardenlinux:$REF_TAG \
+                | jq -r '.manifest.layers[] | select(.mediaType == "application/vnd.ironcore.image.squashfs").digest')
+
+              CMDLINE="initrd=initrd gl.ovl=/:tmpfs gl.live=1 ip=any console=ttyS0,115200 console=tty0 earlyprintk=ttyS0,115200 consoleblank=0 ignition.firstboot=1 ignition.config.url=http://boot-operator-service.boot-operator-system.svc.cluster.local:8083/ignition ignition.config.url.append.uuid=true ignition.platform.id=metal gl.url=http://boot-operator-service.boot-operator-system.svc.cluster.local:8083/image?imageName=ghcr.io/ironcore-dev/os-images/gardenlinux&version=${VERSION}&layerDigest=${DIGEST}"
+
+              echo "Building UKI for $ARCH with squashfs digest $DIGEST"
+              ukify build \
+                --linux ../binaries/$ARCH/vmlinuz \
+                --initrd ../binaries/$ARCH/initrd \
+                --stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
+                --cmdline "$CMDLINE" \
+                --output ../binaries/$ARCH/uki.img
+            done
+
+            echo "Final image build with UKI for $VARIANT"
+            ./bin/ironcore-image build \
+              --tag ghcr.io/ironcore-dev/os-images/gardenlinux:$IMAGE_TAG \
+              --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz,uki=../binaries/amd64/uki.img \
+              --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz,uki=../binaries/arm64/uki.img
+
+            echo "Pushing final image with UKI: $IMAGE_TAG"
+            ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$IMAGE_TAG --push-sub-manifests
+
+            echo "Finished $VARIANT"
           done
-
-      - name: Push Final OCI Image with UKI
-        run: |
-          cd ironcore-image
-          ./bin/ironcore-image build \
-            --tag ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION \
-            --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz,uki=../binaries/amd64/uki.img \
-            --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz,uki=../binaries/arm64/uki.img
-
-          ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$VERSION --push-sub-manifests
