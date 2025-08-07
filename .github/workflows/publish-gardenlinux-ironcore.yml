@@ -102,9 +102,6 @@ jobs:
               --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz \
               --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz
 
-            echo "Pushing base image (without UKI)"
-            ./bin/ironcore-image push ghcr.io/ironcore-dev/os-images/gardenlinux:$IMAGE_TAG --push-sub-manifests
-
             echo "Inspecting squashfs digest for cmdline"
             for ARCH in amd64 arm64; do
               REF_TAG="${VERSION}-${ARCH}"
