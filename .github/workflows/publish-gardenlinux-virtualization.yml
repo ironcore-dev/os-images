@@ -1,0 +1,100 @@
+name: Publish GardenLinux Dev Image
+
+on:
+  push:
+    branches:
+      - enh/virt-multi-arch-image
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Podman
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get -qq -y install podman
+          curl -Lo ./crun https://github.com/containers/crun/releases/download/1.14.3/crun-1.14.3-linux-amd64
+          chmod +x ./crun
+          sudo mv ./crun /usr/bin/crun
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+      - name: Clone gardenlinux repository
+        uses: actions/checkout@v2
+        with:
+          repository: gardenlinux/gardenlinux
+          fetch-depth: 0
+
+      - name: Checkout latest tag
+        run: |
+          git fetch --all --tags
+          latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+          git checkout $latestTag
+          echo "{\"commandLine\": \"\", \"os-release\": \"$latestTag\"}" > config.json
+
+      - name: Build with Podman
+        run: |
+          ./cert/build
+          ./build kvm-amd64 kvm_pxe-amd64 kvm-arm64 kvm_pxe-arm64
+
+          mkdir arm
+          mkdir amd 
+
+      - name: List files in the current directory
+        run: |
+          ls -alh
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Install ironcore-image
+        run: |
+          go install github.com/ironcore-dev/ironcore-image/cmd@main
+          mv $(go env GOPATH)/bin/cmd $(go env GOPATH)/bin/ironcore-image
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH  
+
+
+
+      - name: Push Artifact
+        run: |
+          echo "gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyAMA0,115200 earlyprintk=ttyAMA0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu" > arm.cmdline
+          echo "gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu" > amd.cmdline
+          
+          ARM_KVM_RAW_FILE=$(ls .build/*arm*.raw | head -n 1)
+          AMD_KVM_RAW_FILE=$(ls .build/*amd*.raw | head -n 1)
+          
+          ARM_PXE_GZ=$(ls .build/*arm*.pxe.tar.gz | head -n 1)
+          AMD_PXE_GZ=$(ls .build/*amd*.pxe.tar.gz | head -n 1)
+          
+          tar -xzf $ARM_PXE_GZ -C arm
+          tar -xzf $AMD_PXE_GZ -C amd
+          
+          ironcore-image build \
+            --tag ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:latest \
+            --config  arch=arm64, \
+                      squashfs=./arm/root.squashfs,\
+                      initramfs=./arm/initrd,\
+                      kernel=./arm/vmlinuz,\
+                      rootfs=$ARM_KVM_RAW_FILE,\
+                      cmdline=./arm.cmdline \
+            --config  arch=amd64, \
+                      squashfs=./amd/root.squashfs,\
+                      initramfs=./amd/initrd,\
+                      kernel=./amd/vmlinuz,\
+                      rootfs=$AMD_KVM_RAW_FILE,\
+                      cmdline=./amd.cmdline 
+          
+          ironcore-image push ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:latest --push-sub-manifests
+
+
