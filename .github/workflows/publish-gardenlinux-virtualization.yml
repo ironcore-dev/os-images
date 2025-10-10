@@ -1,4 +1,4 @@
-name: Publish GardenLinux Dev Image
+name: Publish GardenLinux Virtualization Image
 
 on:
   push:
