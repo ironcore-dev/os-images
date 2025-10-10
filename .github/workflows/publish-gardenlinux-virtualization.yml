@@ -1,0 +1,94 @@
+name: Publish GardenLinux Virtualization Image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Install yq (YAML Processor)
+        run: sudo snap install yq
+
+      - name: Read Config Files and Extract OS Version
+        id: read-config
+        run: |
+          #AMD64
+          GARDENLINUX_AMD64_KVM_ARTIFACT_URL=$(yq e .amd64.gardenlinux_kvm_artifact_url .github/os_image_artifacts.yml)
+          echo "GARDENLINUX_AMD64_KVM_ARTIFACT_URL=$GARDENLINUX_AMD64_KVM_ARTIFACT_URL" >> $GITHUB_ENV
+          
+          AMD64_ARTIFACT_FOLDER=$(basename $GARDENLINUX_AMD64_KVM_ARTIFACT_URL | sed 's/.tar.xz//')
+          echo "AMD64_ARTIFACT_FOLDER=$AMD64_ARTIFACT_FOLDER" >> $GITHUB_ENV
+          
+          #ARM64      
+          GARDENLINUX_ARM64_KVM_ARTIFACT_URL=$(yq e .arm64.gardenlinux_kvm_artifact_url .github/os_image_artifacts.yml)
+          echo "GARDENLINUX_ARM64_KVM_ARTIFACT_URL=$GARDENLINUX_ARM64_KVM_ARTIFACT_URL" >> $GITHUB_ENV
+          
+          ARM64_ARTIFACT_FOLDER=$(basename $GARDENLINUX_ARM64_KVM_ARTIFACT_URL | sed 's/.tar.xz//')
+          echo "ARM64_ARTIFACT_FOLDER=$ARM64_ARTIFACT_FOLDER" >> $GITHUB_ENV
+
+          OS_VERSION=$(echo $GARDENLINUX_AMD64_KVM_ARTIFACT_URL | cut -d '/' -f 8)
+          echo "OS_VERSION=$OS_VERSION" >> $GITHUB_ENV
+      - name: Download and Extract Gardenlinux KVM Artifact
+        run: |
+          curl -L ${{ env.GARDENLINUX_AMD64_KVM_ARTIFACT_URL }} -o gardenlinux_amd.tar.xz
+          tar -xf gardenlinux_amd.tar.xz
+          KVM_AMD64_RAW_FILE=$(ls ${{ env.AMD64_ARTIFACT_FOLDER }}/*.raw)
+          echo "KVM_AMD64_RAW_FILE=$KVM_AMD64_RAW_FILE" >> $GITHUB_ENV
+          
+          curl -L ${{ env.GARDENLINUX_ARM64_KVM_ARTIFACT_URL }} -o gardenlinux_arm.tar.xz
+          tar -xf gardenlinux_arm.tar.xz
+          KVM_ARM64_RAW_FILE=$(ls ${{ env.ARM64_ARTIFACT_FOLDER }}/*.raw)
+          echo "KVM_ARM64_RAW_FILE=$KVM_ARM64_RAW_FILE" >> $GITHUB_ENV
+
+      - name: Create Config JSON
+        run: |
+          echo "gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyAMA0,115200 earlyprintk=ttyAMA0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu" > arm64.cmdline.json
+          echo "gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu" > amd64.cmdline.json
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Install ironcore-image
+        run: |
+          go install github.com/ironcore-dev/ironcore-image/cmd@main
+          mv $(go env GOPATH)/bin/cmd $(go env GOPATH)/bin/ironcore-image
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH  
+
+      - name: Push Image  (Version Tag)
+        run: |
+          ironcore-image build \
+          --tag ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:$OS_VERSION \
+          --config arch=amd64,rootfs=${{ env.KVM_AMD64_RAW_FILE }},cmdline=./amd64.cmdline.json \
+          --config arch=arm64,rootfs=${{ env.KVM_ARM64_RAW_FILE }},cmdline=./arm64.cmdline.json
+
+          ironcore-image push ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:$OS_VERSION --push-sub-manifests
+
+      - name: Push Image (Latest Tag)
+        run: |
+          ironcore-image build \
+          --tag ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:latest \
+          --config arch=amd64,rootfs=${{ env.KVM_AMD64_RAW_FILE }},cmdline=./amd64.cmdline.json \
+          --config arch=arm64,rootfs=${{ env.KVM_ARM64_RAW_FILE }},cmdline=./arm64.cmdline.json
+
+          ironcore-image push ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:latest --push-sub-manifests
