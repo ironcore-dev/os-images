@@ -50,7 +50,7 @@ jobs:
 
       - name: Clone Ironcore Image Repo
         run: |
-          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/ironcore-dev/ironcore-image.git
+          git clone https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository_owner }}/ironcore-image.git
 
       - name: Build and Push OCI Images (Vanilla/Gardener/CAPI)
         run: |
@@ -63,15 +63,15 @@ jobs:
 
             case "$VARIANT" in
               vanilla)
-                IMAGE_NAME="ghcr.io/ironcore-dev/os-images/gardenlinux"
+                IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux"
                 CNAME_PREFIX="metal_pxe"
                 ;;
               gardener)
-                IMAGE_NAME="ghcr.io/ironcore-dev/os-images/gardener/gardenlinux"
+                IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/os-images/gardener/gardenlinux"
                 CNAME_PREFIX="metal-gardener_pxe"
                 ;;
               capi)
-                IMAGE_NAME="ghcr.io/ironcore-dev/os-images/capi/gardenlinux"
+                IMAGE_NAME="ghcr.io/${{ github.repository_owner }}/os-images/capi/gardenlinux"
                 CNAME_PREFIX="metal-capi"
                 ;;
             esac
