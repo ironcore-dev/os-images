@@ -78,17 +78,17 @@ jobs:
       - name: Push Image  (Version Tag)
         run: |
           ironcore-image build \
-          --tag ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:$OS_VERSION \
+          --tag ghcr.io/${{ github.repository_owner }}/os-images/virtualization/gardenlinux:$OS_VERSION \
           --config arch=amd64,rootfs=${{ env.KVM_AMD64_RAW_FILE }},cmdline=./amd64.cmdline.json \
           --config arch=arm64,rootfs=${{ env.KVM_ARM64_RAW_FILE }},cmdline=./arm64.cmdline.json
 
-          ironcore-image push ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:$OS_VERSION --push-sub-manifests
+          ironcore-image push ghcr.io/${{ github.repository_owner }}/os-images/virtualization/gardenlinux:$OS_VERSION --push-sub-manifests
 
       - name: Push Image (Latest Tag)
         run: |
           ironcore-image build \
-          --tag ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:latest \
+          --tag ghcr.io/${{ github.repository_owner }}/os-images/virtualization/gardenlinux:latest \
           --config arch=amd64,rootfs=${{ env.KVM_AMD64_RAW_FILE }},cmdline=./amd64.cmdline.json \
           --config arch=arm64,rootfs=${{ env.KVM_ARM64_RAW_FILE }},cmdline=./arm64.cmdline.json
 
-          ironcore-image push ghcr.io/ironcore-dev/os-images/virtualization/gardenlinux:latest --push-sub-manifests
+          ironcore-image push ghcr.io/${{ github.repository_owner }}/os-images/virtualization/gardenlinux:latest --push-sub-manifests

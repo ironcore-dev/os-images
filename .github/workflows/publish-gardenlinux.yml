@@ -71,7 +71,7 @@ jobs:
           METAL_SQUASHFS_FILE=root.squashfs
           METAL_INITRD_FILE=initrd
           METAL_VMLINUZ_FILE=vmlinuz
-          oras push ghcr.io/ironcore-dev/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION \
+          oras push ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION \
           $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
           $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
           $METAL_INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
@@ -80,4 +80,4 @@ jobs:
 
       - name: Push Image with ORAS (Latest Tag)
         run: |
-          oras tag ghcr.io/ironcore-dev/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION latest
+          oras tag ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION latest
