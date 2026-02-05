@@ -1,12 +1,41 @@
 name: Publish GardenLinux Image
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    # Run weekly on Sundays at 00:00 UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
 
 jobs:
+  check-release:
+    runs-on: ubuntu-latest
+    outputs:
+      latest_version: ${{ steps.get-latest.outputs.latest_version }}
+      should_publish: ${{ steps.check-published.outputs.should_publish }}
+    steps:
+      - name: Get Latest GardenLinux Release
+        id: get-latest
+        run: |
+          LATEST_RELEASE=$(curl -s https://api.github.com/repos/gardenlinux/gardenlinux/releases/latest | jq -r '.tag_name')
+          echo "Latest GardenLinux release: $LATEST_RELEASE"
+          echo "latest_version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
+
+      - name: Check if Version Already Published
+        id: check-published
+        run: |
+          LATEST_VERSION="${{ steps.get-latest.outputs.latest_version }}"
+          # Check if the image already exists in ghcr.io by attempting to pull the manifest
+          if docker manifest inspect ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-amd64:$LATEST_VERSION > /dev/null 2>&1; then
+            echo "Version $LATEST_VERSION already published, skipping"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version $LATEST_VERSION found, will publish"
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          fi
+
   publish:
+    needs: check-release
+    if: needs.check-release.outputs.should_publish == 'true'
     permissions:
       contents: read
       packages: write
@@ -18,25 +47,43 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v2
-
-      - name: Install yq (YAML Processor)
-        run: sudo snap install yq
+        uses: actions/checkout@v4
 
       - name: Setup ORAS
         uses: oras-project/setup-oras@v1
 
-      - name: Read Config Files and Extract OS Version
+      - name: Set Version and Artifact URLs
         id: read-config
         run: |
-          GARDENLINUX_KVM_ARTIFACT_URL=$(yq e .${{ matrix.arch }}.gardenlinux_kvm_artifact_url .github/os_image_artifacts.yml)
-          GARDENLINUX_METAL_ARTIFACT_URL=$(yq e .${{ matrix.arch }}.gardenlinux_metal_artifact_url .github/os_image_artifacts.yml)
-          echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
-          echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
-          OS_VERSION=$(echo $GARDENLINUX_KVM_ARTIFACT_URL | cut -d '/' -f 8)
+          OS_VERSION="${{ needs.check-release.outputs.latest_version }}"
           echo "OS_VERSION=$OS_VERSION" >> $GITHUB_ENV
-          ARTIFACT_FOLDER=$(basename $GARDENLINUX_KVM_ARTIFACT_URL | sed 's/.tar.xz//')
+
+          # Fetch release assets to find the correct artifact filenames
+          ASSETS=$(curl -s "https://api.github.com/repos/gardenlinux/gardenlinux/releases/tags/$OS_VERSION" | jq -r '.assets[].name')
+
+          # Find KVM artifact for this architecture
+          KVM_ASSET=$(echo "$ASSETS" | grep -E "^kvm-gardener_prod-${{ matrix.arch }}-.*\.tar\.xz$" | head -1)
+          if [ -z "$KVM_ASSET" ]; then
+            echo "Error: Could not find KVM artifact for ${{ matrix.arch }}"
+            exit 1
+          fi
+          GARDENLINUX_KVM_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$KVM_ASSET"
+          echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
+
+          # Find Metal PXE artifact for this architecture
+          METAL_ASSET=$(echo "$ASSETS" | grep -E "^metal-gardener_prod_pxe-${{ matrix.arch }}-.*\.tar\.xz$" | head -1)
+          if [ -z "$METAL_ASSET" ]; then
+            echo "Error: Could not find Metal artifact for ${{ matrix.arch }}"
+            exit 1
+          fi
+          GARDENLINUX_METAL_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$METAL_ASSET"
+          echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
+
+          ARTIFACT_FOLDER=$(basename "$GARDENLINUX_KVM_ARTIFACT_URL" | sed 's/.tar.xz//')
           echo "ARTIFACT_FOLDER=$ARTIFACT_FOLDER" >> $GITHUB_ENV
+
+          echo "KVM URL: $GARDENLINUX_KVM_ARTIFACT_URL"
+          echo "Metal URL: $GARDENLINUX_METAL_ARTIFACT_URL"
 
       - name: Download and Extract Gardenlinux KVM Artifact
         run: |
@@ -62,7 +109,7 @@ jobs:
             echo "{\"commandLine\": \"gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu\", \"os-release\": \"$OS_VERSION\", \"arch\": \"${{ matrix.arch }}\"}" > config.json
           fi
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
