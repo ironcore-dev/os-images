@@ -81,9 +81,6 @@ jobs:
             echo "HAS_METAL_ARTIFACT=true" >> $GITHUB_ENV
           fi
 
-          ARTIFACT_FOLDER=$(basename "$GARDENLINUX_KVM_ARTIFACT_URL" | sed 's/.tar.xz//')
-          echo "ARTIFACT_FOLDER=$ARTIFACT_FOLDER" >> $GITHUB_ENV
-
           echo "KVM URL: $GARDENLINUX_KVM_ARTIFACT_URL"
           if [ -n "$METAL_ASSET" ]; then
             echo "Metal URL: $GARDENLINUX_METAL_ARTIFACT_URL"
@@ -95,6 +92,8 @@ jobs:
         run: |
           curl -L ${{ env.GARDENLINUX_KVM_ARTIFACT_URL }} -o gardenlinux.tar.xz
           tar -xf gardenlinux.tar.xz
+          echo "Extracted contents:"
+          ls -la
 
       - name: Download and Extract Gardenlinux Metal Artifact
         if: env.HAS_METAL_ARTIFACT == 'true'
@@ -124,7 +123,13 @@ jobs:
 
       - name: Push Image with ORAS (Version Tag)
         run: |
-          KVM_RAW_FILE=$(ls ${{ env.ARTIFACT_FOLDER }}/*.raw)
+          # Find the .raw file dynamically (handles varying folder structures)
+          KVM_RAW_FILE=$(find . -name "*.raw" -type f | head -1)
+          if [ -z "$KVM_RAW_FILE" ]; then
+            echo "Error: Could not find .raw file after extraction"
+            exit 1
+          fi
+          echo "Found KVM raw file: $KVM_RAW_FILE"
 
           # Build the oras push command with required KVM artifact
           ORAS_ARGS="$KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs"
