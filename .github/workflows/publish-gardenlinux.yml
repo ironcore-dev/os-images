@@ -70,20 +70,26 @@ jobs:
           GARDENLINUX_KVM_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$KVM_ASSET"
           echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
 
-          # Find Metal PXE artifact for this architecture
+          # Find Metal PXE artifact for this architecture (optional - may not exist for arm64)
           METAL_ASSET=$(echo "$ASSETS" | grep -E "^metal-gardener_prod_pxe-${{ matrix.arch }}-.*\.tar\.xz$" | head -1)
           if [ -z "$METAL_ASSET" ]; then
-            echo "Error: Could not find Metal artifact for ${{ matrix.arch }}"
-            exit 1
+            echo "Warning: Could not find Metal artifact for ${{ matrix.arch }}, skipping Metal artifacts"
+            echo "HAS_METAL_ARTIFACT=false" >> $GITHUB_ENV
+          else
+            GARDENLINUX_METAL_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$METAL_ASSET"
+            echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
+            echo "HAS_METAL_ARTIFACT=true" >> $GITHUB_ENV
           fi
-          GARDENLINUX_METAL_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$METAL_ASSET"
-          echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
 
           ARTIFACT_FOLDER=$(basename "$GARDENLINUX_KVM_ARTIFACT_URL" | sed 's/.tar.xz//')
           echo "ARTIFACT_FOLDER=$ARTIFACT_FOLDER" >> $GITHUB_ENV
 
           echo "KVM URL: $GARDENLINUX_KVM_ARTIFACT_URL"
-          echo "Metal URL: $GARDENLINUX_METAL_ARTIFACT_URL"
+          if [ -n "$METAL_ASSET" ]; then
+            echo "Metal URL: $GARDENLINUX_METAL_ARTIFACT_URL"
+          else
+            echo "Metal URL: (not available for ${{ matrix.arch }})"
+          fi
 
       - name: Download and Extract Gardenlinux KVM Artifact
         run: |
@@ -91,6 +97,7 @@ jobs:
           tar -xf gardenlinux.tar.xz
 
       - name: Download and Extract Gardenlinux Metal Artifact
+        if: env.HAS_METAL_ARTIFACT == 'true'
         run: |
           # Download the outer tarball
           curl -L ${{ env.GARDENLINUX_METAL_ARTIFACT_URL }} -o gardenlinux-metal.tar.xz
@@ -118,14 +125,19 @@ jobs:
       - name: Push Image with ORAS (Version Tag)
         run: |
           KVM_RAW_FILE=$(ls ${{ env.ARTIFACT_FOLDER }}/*.raw)
-          METAL_SQUASHFS_FILE=root.squashfs
-          METAL_INITRD_FILE=initrd
-          METAL_VMLINUZ_FILE=vmlinuz
+
+          # Build the oras push command with required KVM artifact
+          ORAS_ARGS="$KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs"
+
+          # Add Metal artifacts if available
+          if [ "${{ env.HAS_METAL_ARTIFACT }}" == "true" ]; then
+            ORAS_ARGS="$ORAS_ARGS root.squashfs:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs"
+            ORAS_ARGS="$ORAS_ARGS initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs"
+            ORAS_ARGS="$ORAS_ARGS vmlinuz:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz"
+          fi
+
           oras push ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION \
-          $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
-          $METAL_SQUASHFS_FILE:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs \
-          $METAL_INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
-          $METAL_VMLINUZ_FILE:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
+          $ORAS_ARGS \
           --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
 
       - name: Push Image with ORAS (Latest Tag)
