@@ -101,24 +101,18 @@ jobs:
               done
             done
 
-            echo "First build (without UKI)"
-            ./bin/ironcore-image build \
-              --tag $IMAGE_NAME:$VERSION \
-              --config arch=amd64,squashfs=../binaries/amd64/root.squashfs,initramfs=../binaries/amd64/initrd,kernel=../binaries/amd64/vmlinuz \
-              --config arch=arm64,squashfs=../binaries/arm64/root.squashfs,initramfs=../binaries/arm64/initrd,kernel=../binaries/arm64/vmlinuz
-
-            echo "Inspecting squashfs digest for cmdline"
             for ARCH in amd64 arm64; do
-              REF_TAG="${VERSION}-${ARCH}"
-              DIGEST=$(./bin/ironcore-image inspect $IMAGE_NAME:$REF_TAG \
-                | jq -r '.manifest.layers[] | select(.mediaType == "application/vnd.ironcore.image.squashfs").digest')
+              CMDLINE="initrd=initrd gl.ovl=/:tmpfs gl.live=1 ip=any console=ttyS0,115200 console=tty0 earlyprintk=ttyS0,115200 consoleblank=0 ignition.firstboot=1 ignition.config.url=http://boot.onmetal.de:8083/ignition ignition.config.url.append.uuid=true ignition.platform.id=metal"
 
-              CMDLINE="initrd=initrd gl.ovl=/:tmpfs gl.live=1 ip=any console=ttyS0,115200 console=tty0 earlyprintk=ttyS0,115200 consoleblank=0 ignition.firstboot=1 ignition.config.url=http://boot.onmetal.de:8083/ignition ignition.config.url.append.uuid=true ignition.platform.id=metal gl.url=http://boot.onmetal.de:8083/image?imageName=$IMAGE_NAME&version=${VERSION}&layerDigest=${DIGEST}"
-
-              echo "Building UKI for $ARCH with squashfs digest $DIGEST"
+              echo "Building UKI for $ARCH"
+              (
+                cd ../binaries/$ARCH
+                cp initrd initrd-uki
+                echo root.squashfs | cpio -H newc -o | xz --check=crc32 >> initrd-uki
+              )
               ukify build \
                 --linux ../binaries/$ARCH/vmlinuz \
-                --initrd ../binaries/$ARCH/initrd \
+                --initrd ../binaries/$ARCH/initrd-uki \
                 --stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
                 --cmdline "$CMDLINE" \
                 --output ../binaries/$ARCH/uki.img
