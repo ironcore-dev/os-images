@@ -15,6 +15,9 @@ The GitHub Actions workflow triggers on pushes to the `main` branch and performs
 ## Configuration
 The configuration for OS artifacts is managed through the `os_image_artifacts.yml` file located in the `.github` directory. Currently only `amd64` and `arm64` platforms are supported.
 
+## Documentation
+- Manual build (Garden Linux -> `ironcore-image`): `docs/manual-oci-image-build.md`
+
 ### Example Configuration
 ```yaml
 amd64:
