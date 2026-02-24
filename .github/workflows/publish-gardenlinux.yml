@@ -1,119 +1,193 @@
-name: Publish GardenLinux Image
+name: Publish GardenLinux Images
 
 on:
   schedule:
-    # Run weekly on Sundays at 00:00 UTC
     - cron: '0 0 * * 0'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'GardenLinux version (leave empty for latest release)'
+        required: false
+        type: string
 
 jobs:
-  check-release:
+  resolve-version:
     runs-on: ubuntu-latest
     outputs:
-      latest_version: ${{ steps.get-latest.outputs.latest_version }}
-      should_publish: ${{ steps.check-published.outputs.should_publish }}
+      version: ${{ steps.resolve.outputs.version }}
+      should_publish: ${{ steps.resolve.outputs.should_publish }}
     steps:
-      - name: Get Latest GardenLinux Release
-        id: get-latest
+      - name: Resolve version
+        id: resolve
         run: |
-          LATEST_RELEASE=$(curl -s https://api.github.com/repos/gardenlinux/gardenlinux/releases/latest | jq -r '.tag_name')
-          echo "Latest GardenLinux release: $LATEST_RELEASE"
-          echo "latest_version=$LATEST_RELEASE" >> $GITHUB_OUTPUT
-
-      - name: Check if Version Already Published
-        id: check-published
-        run: |
-          LATEST_VERSION="${{ steps.get-latest.outputs.latest_version }}"
-          # Check if the image already exists in ghcr.io by attempting to pull the manifest
-          if docker manifest inspect ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-amd64:$LATEST_VERSION > /dev/null 2>&1; then
-            echo "Version $LATEST_VERSION already published, skipping"
-            echo "should_publish=false" >> $GITHUB_OUTPUT
-          else
-            echo "New version $LATEST_VERSION found, will publish"
-            echo "should_publish=true" >> $GITHUB_OUTPUT
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+            echo "Using manually specified version: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
 
+          VERSION=$(curl -s https://api.github.com/repos/gardenlinux/gardenlinux/releases/latest | jq -r '.tag_name')
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "::error::Failed to resolve latest GardenLinux release"
+            exit 1
+          fi
+          echo "Resolved latest GardenLinux release: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Only check for duplicates on scheduled runs, manual dispatch always publishes.
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if docker manifest inspect "ghcr.io/${{ github.repository_owner }}/gardenlinux/gardener:${VERSION}-kvm-amd64" > /dev/null 2>&1; then
+              echo "Version $VERSION already published, skipping"
+              echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+
   publish:
-    needs: check-release
-    if: needs.check-release.outputs.should_publish == 'true'
+    needs: resolve-version
+    if: needs.resolve-version.outputs.should_publish == 'true'
     permissions:
       contents: read
       packages: write
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
-        arch: [ "arm64", "amd64" ]
+        include:
+          - variant: metal
+            image_name: gardenlinux
+            asset_pattern: baremetal_pxe
+          - variant: kvm
+            image_name: gardenlinux/gardener
+            asset_pattern: kvm-gardener_prod
+          - variant: metal
+            image_name: gardenlinux/gardener
+            asset_pattern: baremetal-gardener_pxe
+          - variant: metal
+            image_name: gardenlinux/capi
+            asset_pattern: baremetal-capi
+
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup ORAS
-        uses: oras-project/setup-oras@v1
-
-      - name: Set Version and Artifact URLs
-        id: read-config
+      - name: Fetch artifacts from GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          OS_VERSION="${{ needs.check-release.outputs.latest_version }}"
-          echo "OS_VERSION=$OS_VERSION" >> $GITHUB_ENV
+          set -euo pipefail
 
-          # Fetch release assets to find the correct artifact filenames
-          ASSETS=$(curl -s "https://api.github.com/repos/gardenlinux/gardenlinux/releases/tags/$OS_VERSION" | jq -r '.assets[].name')
+          ASSETS=$(curl -sH "Authorization: token ${GH_TOKEN}" \
+            "https://api.github.com/repos/gardenlinux/gardenlinux/releases/tags/$VERSION" \
+            | jq -r '.assets[].name')
 
-          # Find KVM artifact for this architecture
-          KVM_ASSET=$(echo "$ASSETS" | grep -E "^kvm-gardener_prod-${{ matrix.arch }}-.*\.tar\.xz$" | head -1)
-          if [ -z "$KVM_ASSET" ]; then
-            echo "Error: Could not find KVM artifact for ${{ matrix.arch }}"
-            exit 1
-          fi
-          GARDENLINUX_KVM_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$KVM_ASSET"
-          echo "GARDENLINUX_KVM_ARTIFACT_URL=$GARDENLINUX_KVM_ARTIFACT_URL" >> $GITHUB_ENV
+          for ARCH in amd64 arm64; do
+            ASSET=$(echo "$ASSETS" | grep -E "^${{ matrix.asset_pattern }}-${ARCH}-.*\.tar\.xz$" | head -1)
+            if [ -z "$ASSET" ]; then
+              echo "::error::Could not find asset matching ${{ matrix.asset_pattern }}-${ARCH}-*.tar.xz"
+              exit 1
+            fi
 
-          # Find Metal PXE artifact for this architecture (optional - may not exist for arm64)
-          METAL_ASSET=$(echo "$ASSETS" | grep -E "^metal-gardener_prod_pxe-${{ matrix.arch }}-.*\.tar\.xz$" | head -1)
-          if [ -z "$METAL_ASSET" ]; then
-            echo "Warning: Could not find Metal artifact for ${{ matrix.arch }}, skipping Metal artifacts"
-            echo "HAS_METAL_ARTIFACT=false" >> $GITHUB_ENV
-          else
-            GARDENLINUX_METAL_ARTIFACT_URL="https://github.com/gardenlinux/gardenlinux/releases/download/$OS_VERSION/$METAL_ASSET"
-            echo "GARDENLINUX_METAL_ARTIFACT_URL=$GARDENLINUX_METAL_ARTIFACT_URL" >> $GITHUB_ENV
-            echo "HAS_METAL_ARTIFACT=true" >> $GITHUB_ENV
-          fi
+            # The asset base name (without .tar.xz) is the prefix for all
+            # files inside the archive.
+            ASSET_BASE="${ASSET%.tar.xz}"
 
-          echo "KVM URL: $GARDENLINUX_KVM_ARTIFACT_URL"
-          if [ -n "$METAL_ASSET" ]; then
-            echo "Metal URL: $GARDENLINUX_METAL_ARTIFACT_URL"
-          else
-            echo "Metal URL: (not available for ${{ matrix.arch }})"
-          fi
+            echo "Downloading $ASSET"
+            mkdir -p "artifacts/${ARCH}"
+            curl -sL "https://github.com/gardenlinux/gardenlinux/releases/download/${VERSION}/${ASSET}" \
+              -o "artifacts/${ARCH}/${ASSET}"
 
-      - name: Download and Extract Gardenlinux KVM Artifact
+            echo "Extracting $ASSET"
+            tar -xf "artifacts/${ARCH}/${ASSET}" -C "artifacts/${ARCH}"
+            rm "artifacts/${ARCH}/${ASSET}"
+
+            if [ "${{ matrix.variant }}" = "kvm" ]; then
+              RAW_FILE="artifacts/${ARCH}/${ASSET_BASE}.raw"
+              if [ ! -f "$RAW_FILE" ]; then
+                echo "::error::Expected .raw file not found at ${RAW_FILE}"
+                exit 1
+              fi
+              echo "KVM_${ARCH^^}_RAW=${RAW_FILE}" >> "$GITHUB_ENV"
+            else
+              # Metal: extract the nested PXE tarball to get initrd, vmlinuz, root.squashfs.
+              PXE_TARBALL="artifacts/${ARCH}/${ASSET_BASE}.pxe.tar.gz"
+              if [ ! -f "$PXE_TARBALL" ]; then
+                echo "::error::Could not find nested PXE tarball at ${PXE_TARBALL}"
+                exit 1
+              fi
+              tar -xzf "$PXE_TARBALL" -C "artifacts/${ARCH}"
+
+              for BIN in initrd vmlinuz root.squashfs; do
+                if [ ! -f "artifacts/${ARCH}/${BIN}" ]; then
+                  echo "::error::Could not find ${BIN} for ${ARCH}"
+                  exit 1
+                fi
+              done
+
+              echo "METAL_${ARCH^^}_DIR=artifacts/${ARCH}" >> "$GITHUB_ENV"
+              echo "METAL_${ARCH^^}_ASSET_BASE=${ASSET_BASE}" >> "$GITHUB_ENV"
+            fi
+          done
+
+      - name: Create cmdline files (KVM)
+        if: matrix.variant == 'kvm'
         run: |
-          curl -L ${{ env.GARDENLINUX_KVM_ARTIFACT_URL }} -o gardenlinux.tar.xz
-          tar -xf gardenlinux.tar.xz
-          echo "Extracted contents:"
-          ls -la
+          echo -n "gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu consoleblank=0 console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200" > amd64.cmdline
+          echo -n "gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu consoleblank=0 console=tty0 console=ttyAMA0,115200 earlyprintk=ttyAMA0,115200" > arm64.cmdline
 
-      - name: Download and Extract Gardenlinux Metal Artifact
-        if: env.HAS_METAL_ARTIFACT == 'true'
+      - name: Install systemd-ukify (Metal)
+        if: matrix.variant == 'metal'
         run: |
-          # Download the outer tarball
-          curl -L ${{ env.GARDENLINUX_METAL_ARTIFACT_URL }} -o gardenlinux-metal.tar.xz
-          tar -xf gardenlinux-metal.tar.xz
+          sudo apt-get update -qq
+          sudo apt-get install -y systemd-ukify
 
-          # Extract the nested tarball to get the initrd, vmlinuz, and root.squashfs files
-          NESTED_TARBALL=$(find . -name "*pxe.tar.gz")
-          tar -xzf $NESTED_TARBALL
-
-      - name: Create Config JSON
+      - name: Build UKI (Metal)
+        if: matrix.variant == 'metal'
         run: |
-          if [ "${{ matrix.arch }}" == "arm64" ]; then
-            echo "{\"commandLine\": \"gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyAMA0,115200 earlyprintk=ttyAMA0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu\", \"os-release\": \"$OS_VERSION\", \"arch\": \"${{ matrix.arch }}\"}" > config.json
-          fi
-          if [ "${{ matrix.arch }}" == "amd64" ]; then
-            echo "{\"commandLine\": \"gl.url=/dev/disk/by-id/virtio-machineboot gl.live=1 gl.ovl=/:tmpfs console=tty0 console=ttyS0,115200 earlyprintk=ttyS0,115200 consoleblank=0 cgroup_enable=memory swapaccount=1 ignition.firstboot=1 ignition.platform.id=qemu\", \"os-release\": \"$OS_VERSION\", \"arch\": \"${{ matrix.arch }}\"}" > config.json
-          fi
+          set -euo pipefail
+
+          for ARCH in amd64 arm64; do
+            ARCH_UPPER="${ARCH^^}"
+            DIR_VAR="METAL_${ARCH_UPPER}_DIR"
+            DIR="${!DIR_VAR}"
+            BASE_VAR="METAL_${ARCH_UPPER}_ASSET_BASE"
+            ASSET_BASE="${!BASE_VAR}"
+
+            # Extract the arch-correct EFI stub from the rootfs tar.
+            if [ "$ARCH" = "amd64" ]; then
+              STUB_NAME="linuxx64.efi.stub"
+            else
+              STUB_NAME="linuxaa64.efi.stub"
+            fi
+            STUB_PATH="usr/lib/systemd/boot/efi/${STUB_NAME}"
+            tar -xf "${DIR}/${ASSET_BASE}.tar" -C "${DIR}" "${STUB_PATH}"
+            EFI_STUB="${DIR}/${STUB_PATH}"
+
+            # Build initrd-uki by embedding squashfs into initrd
+            cp "${DIR}/initrd" "${DIR}/initrd-uki"
+            (cd "${DIR}" && echo root.squashfs | cpio -H newc -o | xz --check=crc32) >> "${DIR}/initrd-uki"
+
+            CMDLINE="initrd=initrd gl.ovl=/:tmpfs gl.live=1 ip=any console=ttyS0,115200 console=tty0 earlyprintk=ttyS0,115200 consoleblank=0 ignition.firstboot=1 ignition.config.url=http://boot.onmetal.de:8083/ignition ignition.config.url.append.uuid=true ignition.platform.id=metal"
+
+            ukify build \
+              --linux "${DIR}/vmlinuz" \
+              --initrd "${DIR}/initrd-uki" \
+              --stub "$EFI_STUB" \
+              --cmdline "$CMDLINE" \
+              --output "${DIR}/uki.img"
+
+            echo "Built UKI for ${ARCH}"
+          done
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -121,30 +195,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push Image with ORAS (Version Tag)
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Install ironcore-image
         run: |
-          # Find the .raw file dynamically (handles varying folder structures)
-          KVM_RAW_FILE=$(find . -name "*.raw" -type f | head -1)
-          if [ -z "$KVM_RAW_FILE" ]; then
-            echo "Error: Could not find .raw file after extraction"
-            exit 1
-          fi
-          echo "Found KVM raw file: $KVM_RAW_FILE"
+          go install github.com/ironcore-dev/ironcore-image/cmd@latest
+          mv "$(go env GOPATH)/bin/cmd" "$(go env GOPATH)/bin/ironcore-image"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-          # Build the oras push command with required KVM artifact
-          ORAS_ARGS="$KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs"
-
-          # Add Metal artifacts if available
-          if [ "${{ env.HAS_METAL_ARTIFACT }}" == "true" ]; then
-            ORAS_ARGS="$ORAS_ARGS root.squashfs:application/vnd.ironcore.image.squashfs.v1alpha1.squashfs"
-            ORAS_ARGS="$ORAS_ARGS initrd:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs"
-            ORAS_ARGS="$ORAS_ARGS vmlinuz:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz"
-          fi
-
-          oras push ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION \
-          $ORAS_ARGS \
-          --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
-
-      - name: Push Image with ORAS (Latest Tag)
+      - name: Build image (KVM)
+        if: matrix.variant == 'kvm'
         run: |
-          oras tag ghcr.io/${{ github.repository_owner }}/os-images/gardenlinux-${{ matrix.arch }}:$OS_VERSION latest
+          ironcore-image build \
+            --tag "${IMAGE}:${VERSION}-kvm" \
+            --config "arch=amd64,rootfs=${KVM_AMD64_RAW},cmdline=./amd64.cmdline" \
+            --config "arch=arm64,rootfs=${KVM_ARM64_RAW},cmdline=./arm64.cmdline"
+
+      - name: Build image (Metal)
+        if: matrix.variant == 'metal'
+        run: |
+          ironcore-image build \
+            --tag "${IMAGE}:${VERSION}-metal" \
+            --config "arch=amd64,squashfs=${METAL_AMD64_DIR}/root.squashfs,initramfs=${METAL_AMD64_DIR}/initrd,kernel=${METAL_AMD64_DIR}/vmlinuz,uki=${METAL_AMD64_DIR}/uki.img" \
+            --config "arch=arm64,squashfs=${METAL_ARM64_DIR}/root.squashfs,initramfs=${METAL_ARM64_DIR}/initrd,kernel=${METAL_ARM64_DIR}/vmlinuz,uki=${METAL_ARM64_DIR}/uki.img"
+
+      - name: Push image
+        run: |
+          ironcore-image push "${IMAGE}:${VERSION}-${{ matrix.variant }}" --push-sub-manifests

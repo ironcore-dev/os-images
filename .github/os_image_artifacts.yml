@@ -1,6 +1,0 @@
-amd64:
-  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.10/kvm-gardener_prod-amd64-1443.10-8d098305.tar.xz
-  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.10/metal-gardener_prod_pxe-amd64-1443.10-8d098305.tar.xz
-arm64:
-  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.10/kvm-gardener_prod-arm64-1443.10-8d098305.tar.xz
-  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1443.10/metal-gardener_prod_pxe-arm64-1443.10-8d098305.tar.xz

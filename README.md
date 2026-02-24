@@ -41,8 +41,6 @@ We automatically publish the following images:
 ghcr.io/ironcore-dev/os-images
 └── /gardenlinux
     ├── :$version
-    ├── :$version-kvm-amd64
-    ├── :$version-kvm-arm64
     ├── :$version-metal-amd64
     ├── :$version-metal-arm64
     ├── /gardener
@@ -53,32 +51,42 @@ ghcr.io/ironcore-dev/os-images
     │   └── :$version-metal-arm64
     └── /capi
         ├── :$version
-        ├── :$version-kvm-amd64
-        ├── :$version-kvm-arm64
         ├── :$version-metal-amd64
         └── :$version-metal-arm64
 ```
 
-## Workflow
-The GitHub Actions workflow triggers on pushes to the `main` branch and performs the following tasks:
-- **Download and Extract OS Artifact**: Automates the process of downloading and extracting specified OS artifacts.
-- **Prepare and Push Images with ORAS**: Pushes the prepared OS images to `ghcr.io`, tagging each with its specific version and also as `latest`.
+Since we are currently only re-publishing the gardenlinux images, we can not
+publish the full matrix as gardenlinux builds only some of the combinations we'd
+like to support.
 
-## Configuration
-The configuration for OS artifacts is managed through the `os_image_artifacts.yml` file located in the `.github` directory. Currently only `amd64` and `arm64` platforms are supported.
+## Workflow
+
+The main publishing workflow (`publish-gardenlinux.yml`) runs weekly on Sundays
+and can also be triggered manually via `workflow_dispatch`. It:
+
+1. **Resolves the version** to publish: uses the manually provided version or
+   discovers the latest Garden Linux release from the GitHub API. Scheduled runs
+   skip publishing if the version has already been published.
+2. **Downloads artifacts** from the Garden Linux GitHub release for both `amd64`
+   and `arm64` architectures.
+3. **Builds multi-arch OCI images** using
+   [`ironcore-image`](https://github.com/ironcore-dev/ironcore-image) for each
+   flavor and variant combination.
+4. **Pushes images** to `ghcr.io` with per-variant and per-arch sub-manifest
+   tags.
+
+For metal images, the workflow also builds a Unified Kernel Image (UKI) using
+`ukify` with the EFI stub extracted from the Garden Linux artifacts.
+
+> [!NOTE]
+>
+> The per-variant tags (e.g. `:$version-metal-amd64`) are available today.
+> The combined `:$version` index manifest listing all variant-arch permutations
+> is not yet produced and will require extending `ironcore-image` with variant
+> support.
 
 ## Documentation
 - Manual build (Garden Linux -> `ironcore-image`): `docs/manual-oci-image-build.md`
-
-### Example Configuration
-```yaml
-amd64:
-  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/kvm-gardener_prod-amd64-1592.3-f64e280f.tar.xz
-  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/metal-gardener_prod_pxe-amd64-1592.3-f64e280f.tar.xz
-arm64:
-  gardenlinux_kvm_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/kvm-gardener_prod-arm64-1592.3-f64e280f.tar.xz
-  gardenlinux_metal_artifact_url: https://github.com/gardenlinux/gardenlinux/releases/download/1592.3/metal-gardener_prod_pxe-arm64-1592.3-f64e280f.tar.xz
-```
 
 ## Contributing
 Contributions to enhance and broaden the scope of the os-images project are encouraged. Please ensure all changes are well-tested before submission.
