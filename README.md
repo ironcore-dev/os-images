@@ -19,7 +19,7 @@ The `os-images` repository specializes in automating the release and publication
 Images in this repository are published according to the following scheme:
 
 ```
-ghcr.io/ironcore-dev/os-images/$distro[/$flavor]:$version[-$variant-$arch][-manual]
+ghcr.io/ironcore-dev/$distro[/$flavor]:$version[-$variant-$arch][-manual]
 ```
 
 * `$distro`: The linux distribution from which this image is built. Currently,
@@ -38,7 +38,7 @@ specify the variant or the architecture you also need to specify the other.
 We automatically publish the following images:
 
 ```
-ghcr.io/ironcore-dev/os-images
+ghcr.io/ironcore-dev
 └── /gardenlinux
     ├── :$version
     ├── :$version-metal-amd64
@@ -86,7 +86,7 @@ For metal images, the workflow also builds a Unified Kernel Image (UKI) using
 > support.
 
 ## Documentation
-- Manual build (Garden Linux -> `ironcore-image`): `docs/manual-oci-image-build.md`
+- Manual build (Garden Linux -> `ironcore-image`): `hack/`
 
 ## Contributing
 Contributions to enhance and broaden the scope of the os-images project are encouraged. Please ensure all changes are well-tested before submission.
