@@ -1,0 +1,66 @@
+name: Publish GardenLinux Dev Image
+
+on:
+  push:
+    branches:
+      - feat/cloud-hypervisor-image
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Podman
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get -qq -y install podman
+          curl -Lo ./crun https://github.com/containers/crun/releases/download/1.14.3/crun-1.14.3-linux-amd64
+          chmod +x ./crun
+          sudo mv ./crun /usr/bin/crun
+
+      - name: Setup ORAS
+        uses: oras-project/setup-oras@v1
+
+      - name: Clone gardenlinux repository
+        uses: actions/checkout@v2
+        with:
+          repository: gardenlinux/gardenlinux
+          ref: feat/cloudhypervisor
+          fetch-depth: 0
+
+      - name: Checkout latest tag
+        run: |
+          echo "{\"commandLine\": \"\", \"os-release\": \"cloudhypervisor\"}" > config.json
+
+      - name: Build with Podman
+        run: |
+          ./build ch_dev
+
+      - name: Create dummy files using dd in the current directory
+        run: |
+          dd if=/dev/zero of=initrd bs=2M count=1
+          dd if=/dev/zero of=vmlinuz bs=3M count=1
+
+      - name: List files in the current directory
+        run: |
+          ls -alh
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push Artifact using ORAS
+        run: |
+          KVM_RAW_FILE=$(ls .build/*.raw | head -n 1)
+          INITRD_FILE=initrd 
+          VMLINUZ_FILE=vmlinuz 
+          echo "Pushing files to ORAS..."
+          oras push ghcr.io/ironcore-dev/os-images/gardenlinux-ch-dev:latest \
+          $KVM_RAW_FILE:application/vnd.ironcore.image.rootfs.v1alpha1.rootfs \
+          $INITRD_FILE:application/vnd.ironcore.image.initramfs.v1alpha1.initramfs \
+          $VMLINUZ_FILE:application/vnd.ironcore.image.vmlinuz.v1alpha1.vmlinuz \
+          --config config.json:application/vnd.ironcore.image.config.v1alpha1+json
