@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 SAP SE or an SAP affiliate company and IronCore contributors
+# SPDX-License-Identifier: Apache-2.0
+
+[Unit]
+Description=Fetch Ignition config with machine UUID appended
+DefaultDependencies=no
+Before=ignition-fetch.service
+After=network-online.target
+Wants=network-online.target
+ConditionKernelCommandLine=ignition.config.url.append.uuid
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ignition-uuid-fetch
+RemainAfterExit=true
+
+[Install]
+WantedBy=ignition-fetch.service

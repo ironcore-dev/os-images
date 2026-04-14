@@ -1,0 +1,45 @@
+suite: trixie
+variant: minbase
+cmdline: >-
+  initrd=initrd
+  boot=squashfs
+  console=tty0
+  console={{ .ConsoleDevice }},115200
+  earlyprintk={{ .ConsoleDevice }},115200
+  consoleblank=0
+  ignition.firstboot=1
+  ignition.platform.id=metal
+components:
+- main
+- non-free-firmware
+packages:
+- linux-image-{{ .Arch }}
+
+# Init system.
+- systemd
+- systemd-sysv
+- dbus
+
+# EFI stub for UKI build.
+- systemd-boot-efi
+  
+# Bare-metal provisioning.
+- ignition
+  
+# Firmware.
+- firmware-linux-free
+
+# Bare-metal usability.
+- openssh-server
+- sudo
+- ca-certificates
+- curl
+- iproute2
+- procps
+- pciutils
+- ethtool
+- e2fsprogs
+- dosfstools
+- gdisk
+
+
