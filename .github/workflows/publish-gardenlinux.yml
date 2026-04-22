@@ -91,7 +91,7 @@ jobs:
             | jq -r '.assets[].name')
 
           for ARCH in amd64 arm64; do
-            ASSET=$(echo "$ASSETS" | grep -E "^${{ matrix.asset_pattern }}-${ARCH}-.*\.tar\.xz$" | head -1)
+            ASSET=$(echo "$ASSETS" | grep -E "^${{ matrix.asset_pattern }}-${ARCH}-[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+\.tar\.xz$" | head -1)
             if [ -z "$ASSET" ]; then
               echo "::error::Could not find asset matching ${{ matrix.asset_pattern }}-${ARCH}-*.tar.xz"
               exit 1
