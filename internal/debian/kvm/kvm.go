@@ -14,7 +14,6 @@ import (
 	"github.com/ironcore-dev/os-images/internal/debian/cloudimages"
 	"github.com/ironcore-dev/os-images/internal/debian/kvm/config"
 	"github.com/ironcore-dev/os-images/internal/httpfs"
-	"github.com/ironcore-dev/os-images/internal/quantity"
 	"github.com/ironcore-dev/os-images/internal/ulog"
 	"github.com/ironcore-dev/os-images/internal/xhash"
 	"github.com/ironcore-dev/os-images/internal/xio"
@@ -92,12 +91,12 @@ func (b *Builder) Build(ctx context.Context, arch string, cfg *config.Config, ou
 
 	srcFilename := fmt.Sprintf("debian-%s-genericcloud-%s.raw", renderedCfg.Codename.Major(), arch)
 
-	dstFilename := fmt.Sprintf("%s.raw", arch)
+	dstFilename := "raw.rootfs"
 	if err := b.downloadFile(ctx, outputDir, renderedCfg.Codename, renderedCfg.Version, srcFilename, dstFilename); err != nil {
 		return err
 	}
 
-	cmdlineFile := filepath.Join(outputDir, arch+".cmdline")
+	cmdlineFile := filepath.Join(outputDir, "cmdline")
 	if err := os.WriteFile(cmdlineFile, []byte(renderedCfg.Cmdline), 0o644); err != nil {
 		return fmt.Errorf("writing %s cmdline: %w", arch, err)
 	}
@@ -117,12 +116,9 @@ func (b *Builder) checksumAndProgress(ctx context.Context, codename debian.Coden
 		return nil, err
 	}
 
-	return ulog.ProgressReadCloser(
-		log.Progress(quantity.New(quantity.Binary, f.Size()), msg, "File", filename),
-		xio.ReaderAndCloser(
-			xhash.ChecksumReader(f, checksums.NewHash(), checksum),
-			f,
-		),
+	return ulog.ProgressReadCloser(log,
+		xhash.ChecksumReadCloser(f, checksums.NewHash(), checksum),
+		msg,
 	), nil
 }
 

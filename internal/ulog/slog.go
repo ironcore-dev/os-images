@@ -112,7 +112,7 @@ func (sp *SLogProgress) unsafeShouldEmit() bool {
 	}
 
 	// Max value 0 means we're in a spinner-like mode, so we should emit.
-	if sp.max.Value() == 0 {
+	if sp.max == nil || sp.max.Value() == 0 {
 		return true
 	}
 
@@ -130,11 +130,19 @@ func (sp *SLogProgress) unsafeEmitIfNecessary() {
 }
 
 func (sp *SLogProgress) unsafeEmit() {
-	sp.logger.Log(context.Background(), slog.LevelInfo, sp.msg,
-		append([]any{
-			"Max", sp.max.String(),
-			"Written", quantity.New(sp.max.Format, sp.written).String(),
-		}, sp.keysAndValues...)...)
+	var values []any
+	if sp.max != nil && sp.max.Value() > 0 {
+		values = append(values, "Max", sp.max.String())
+	}
+
+	format := quantity.Binary
+	if sp.max != nil {
+		format = sp.max.Format
+	}
+
+	values = append(values, "Written", quantity.New(format, sp.written).String())
+
+	sp.logger.Log(context.Background(), slog.LevelInfo, sp.msg, append(values, sp.keysAndValues...)...)
 
 	sp.lastEmit = time.Now()
 	sp.lastWritten = sp.written
@@ -165,6 +173,7 @@ func (sp *SLogProgress) Set(v int64) {
 
 func (s *SLog) Progress(max *quantity.Quantity, msg string, keysAndValues ...any) Progress {
 	done := make(chan struct{})
+
 	sp := &SLogProgress{
 		done:          done,
 		max:           max,

@@ -16,6 +16,8 @@ func Command(prov common.Provider) *cobra.Command {
 	cmd.AddCommand(
 		DebianKVM(prov),
 		DebianMetal(prov),
+		GardenlinuxKVM(prov),
+		GardenlinuxMetal(prov),
 	)
 
 	return cmd

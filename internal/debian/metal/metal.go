@@ -198,7 +198,7 @@ func (b *Builder) debootstrap(ctx context.Context, cfg *renderedConfig, tarPath 
 	}
 	defer func() { _ = rc.Close() }()
 
-	if err := xos.WriteFileReader(tarPath, rc, 0755); err != nil {
+	if err := xos.WriteFileReader(tarPath, rc, 0o644); err != nil {
 		return fmt.Errorf("writing tar: %w", err)
 	}
 	return nil

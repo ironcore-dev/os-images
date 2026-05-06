@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/cavaliergopher/cpio v1.0.1
 	github.com/docker/docker v28.5.2+incompatible
+	github.com/google/go-github/v85 v85.0.0
 	github.com/klauspost/compress v1.18.5
 	github.com/mholt/archives v0.1.5
 	github.com/pterm/pterm v0.12.83
@@ -36,6 +37,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/google/go-querystring v1.2.0 // indirect
 	github.com/gookit/color v1.6.0 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

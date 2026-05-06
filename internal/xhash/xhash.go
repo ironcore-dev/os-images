@@ -34,3 +34,11 @@ func ChecksumReader(r io.Reader, h hash.Hash, expected []byte) io.Reader {
 		expected: expected,
 	}
 }
+
+func ChecksumReadCloser(rc io.ReadCloser, h hash.Hash, expected []byte) io.ReadCloser {
+	cRd := ChecksumReader(rc, h, expected)
+	return struct {
+		io.Reader
+		io.Closer
+	}{cRd, rc}
+}

@@ -1,0 +1,14 @@
+tag: 2150.1.0
+flavor: kvm-gardener_prod
+cmdline: >-
+  gl.url=/dev/disk/by-id/virtio-machineboot
+  gl.live=1
+  gl.ovl=/:tmpfs
+  cgroup_enable=memory
+  swapaccount=1
+  ignition.firstboot=1
+  ignition.platform.id=qemu
+  consoleblank=0
+  console=tty0
+  console={{ .ConsoleDevice }},115200
+  earlyprintk={{ .ConsoleDevice }},115200

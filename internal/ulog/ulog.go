@@ -32,11 +32,25 @@ type Group interface {
 	Success(msg string, keysAndValues ...any)
 }
 
-func ProgressReadCloser(pg Progress, rc io.ReadCloser) io.ReadCloser {
-	rd := io.TeeReader(rc, pg)
+func ProgressReader(log Logger, rd io.Reader, msg string, keysAndValues ...any) io.ReadCloser {
+	var size *quantity.Quantity
+	if sizer, ok := rd.(interface{ Size() int64 }); ok {
+		size = quantity.New(quantity.Binary, sizer.Size())
+	}
+
+	pg := log.Progress(size, msg, keysAndValues...)
+	teeRd := io.TeeReader(rd, pg)
 	return xio.ReaderAndCloser(
-		rd,
-		xio.JoinCloser(pg, rc),
+		teeRd,
+		pg,
+	)
+}
+
+func ProgressReadCloser(log Logger, rc io.ReadCloser, msg string, keysAndValues ...any) io.ReadCloser {
+	progressRc := ProgressReader(log, rc, msg, keysAndValues...)
+	return xio.ReaderAndCloser(
+		progressRc,
+		xio.JoinCloser(progressRc, rc),
 	)
 }
 
