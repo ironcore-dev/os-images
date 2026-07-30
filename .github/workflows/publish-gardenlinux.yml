@@ -202,8 +202,7 @@ jobs:
 
       - name: Install ironcore-image
         run: |
-          go install github.com/ironcore-dev/ironcore-image/cmd@latest
-          mv "$(go env GOPATH)/bin/cmd" "$(go env GOPATH)/bin/ironcore-image"
+          go install github.com/ironcore-dev/ironcore-image/cmd/ironcore-image@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Build image (KVM)
